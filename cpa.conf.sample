@@ -1,0 +1,7 @@
+;
+; DSP Call Progress Configuration
+;
+
+[general]
+total_analysis_time = 5000	; Maximum time allowed for the algorithm to decide
+silence_threshold = 256
