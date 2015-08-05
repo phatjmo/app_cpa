@@ -32,7 +32,7 @@
 					<para>This is the status of the call progress analysis</para>
 					<value name="Ringing" />
 					<value name="Busy" />
-					<value name="Answer" />
+					<value name="Hungup" />
 					<value name="Congestion" />
 					<value name="Talking" />
 				</variable>

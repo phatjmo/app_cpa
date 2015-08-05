@@ -65,11 +65,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 			This is designed for cases where the called party picks up immediately, like a PBX, and then proceeds into its own internal ring group or voicemail.
 		</synopsis>
 		<syntax>
-			<parameter name="maxWaitTimeForFrame" required="false">
-				<para>Frame size to sample for call progress.</para>
-				<para>Longer samples will yield more accurate results, but increase delays.</para>
-				<para>Default is 500ms</para>
-			</parameter>
 			<parameter name="silenceThreshold" required="false">
 				<para>How long do we consider silence</para>
 				<para>Default is 250ms</para>
@@ -78,14 +73,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 				<para>Is the maximum time allowed for the algorithm</para>
 				<para>Default is 5000ms</para>
 			</parameter>
-			<parameter name="minNoise Time" required="false">
-				<para>Is the minimum amount of noise before analysis.</para>
-				<para>Default is 50ms</para>	
-			</parameter>
-			<parameter name="maxNoise Time" required="false">
-				<para>Is the maximum amount of noise before analysis.</para>
-				<para>Default is 500ms</para>
-			</parameter>			
 		</syntax>
 		<description>
 			<para>
@@ -106,14 +93,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 					<para>This is the status of the call progress analysis</para>
 					<value name="Ringing" />
 					<value name="Busy" />
-					<value name="Answer" />
+					<value name="Hungup" />
 					<value name="Congestion" />
-
+					<value name="Talking" />
 				</variable>
 			</variablelist>
 		</description>
 		<see-also>
 			<ref type="application">CPA</ref>
+			<ref type="application">AMD</ref>
 			<ref type="application">WaitForSilence</ref>
 			<ref type="application">WaitForNoise</ref>
 		</see-also>
