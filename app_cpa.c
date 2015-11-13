@@ -96,6 +96,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 					<value name="Hungup" />
 					<value name="Congestion" />
 					<value name="Talking" />
+					<value name="Unknown" />
+					<value name="NoFrames" />
+					<value name="FoundDTMF" />
 				</variable>
 			</variablelist>
 		</description>
@@ -116,6 +119,7 @@ static const char app[] = "CPA";
 static int dfltMaxWaitTimeForFrame  = 50;
 static int dfltSilenceThreshold     = 100;
 static int dfltTotalAnalysisTime    = 1000;
+static int dfltDTMFWait				= 0;
 
 void cpa2str(char cpaString[256], int cpa);
 void tone2str(char toneString[256], int tone);
@@ -132,6 +136,7 @@ static void callProgress(struct ast_channel *chan, const char *data)
 	int toneState = 0;	
 	int lastTone = 0;
 	int tcount = 0;
+	int dtmf = -1;
 	RAII_VAR(struct ast_format *, readFormat, NULL, ao2_cleanup);
 	char cpaStatus[256] = "";
 	//char toneStatus[256] = "";
@@ -153,10 +158,12 @@ static void callProgress(struct ast_channel *chan, const char *data)
 	int maxWaitTimeForFrame  = dfltMaxWaitTimeForFrame;
 	int silenceThreshold     = dfltSilenceThreshold;
 	int totalAnalysisTime    = dfltTotalAnalysisTime;	
+	int dtmfWait 	  		 = dfltDTMFWait;	
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(argSilenceThreshold);
 		AST_APP_ARG(argTotalAnalysisTime);
+		AST_APP_ARG(argDTMFWait);
 	);
 
 	if (!ast_strlen_zero(parse)) {
@@ -165,7 +172,9 @@ static void callProgress(struct ast_channel *chan, const char *data)
 		if (!ast_strlen_zero(args.argSilenceThreshold))
 			silenceThreshold = atoi(args.argSilenceThreshold);
 		if (!ast_strlen_zero(args.argTotalAnalysisTime))
-			totalAnalysisTime = atoi(args.argTotalAnalysisTime);	
+			totalAnalysisTime = atoi(args.argTotalAnalysisTime);
+		if (!ast_strlen_zero(args.argDTMFWait))
+			dtmfWait = atoi(args.argDTMFWait);
 	} else {
 		ast_debug(1, "CPA using the default parameters.\n");
 	}
@@ -174,8 +183,8 @@ static void callProgress(struct ast_channel *chan, const char *data)
 		maxWaitTimeForFrame = totalAnalysisTime;
 
 	/* Now we're ready to roll! */
-	ast_verb(3, "CPA: maxWaitTimeForFrame [%d] silenceThreshold [%d] totalAnalysisTime [%d]\n",
-				maxWaitTimeForFrame, silenceThreshold, totalAnalysisTime);
+	ast_verb(3, "CPA: maxWaitTimeForFrame [%d] silenceThreshold [%d] totalAnalysisTime [%d] dtmfWait [%d]\n",
+				maxWaitTimeForFrame, silenceThreshold, totalAnalysisTime, dtmfWait);
 	
 
 	/*! All THRESH_XXX values are in GSAMP_SIZE chunks (us = 22ms) */
@@ -209,9 +218,21 @@ static void callProgress(struct ast_channel *chan, const char *data)
 	//ast_debug(1, "CPA setting silence threshold: [%d]\n", silenceThreshold);
 	//ast_dsp_set_threshold(cpadsp, silenceThreshold);
 
+	/* First, if DTMF Wait is greater than 0, wait that many ms for DTMF to determine if there is an attempted phreak attack */
+/*	if (dtmfWait > 0) {
+		ast_debug(1, "CPA: Waiting for DTMF on Channel [%s] for [%d]ms.\n", ast_channel_name(chan), dtmfWait);
+		dtmf = ast_waitfordigit(chan, dtmfWait);
+		if (dtmf) {
+			ast_verb(3, "CPA: Channel [%s] has incoming DTMF, Digit received: [%d]\n", ast_channel_name(chan), dtmf);
+			strcpy(cpaStatus , "FoundDTMF");
+			res = 1;
+		} else {
+			ast_debug(1, "CPA: No DTMF detected on Channel [%s] after [%d]ms\n", ast_channel_name(chan), dtmfWait);
+		}
+	}*/
+
 	/* Now we go into a loop waiting for frames from the channel */
 	while ((res = ast_waitfor(chan, 2 * maxWaitTimeForFrame)) > -1) {
-
 		/* If we fail to read in a frame, that means they hung up */
 		if (!(f = ast_read(chan))) {
 			ast_verb(3, "CPA: Channel [%s]. Hungup\n", ast_channel_name(chan));
@@ -223,7 +244,15 @@ static void callProgress(struct ast_channel *chan, const char *data)
 
 		ast_debug(1, "CPA checking frametype: [%d].\n", f->frametype);
 
-		if (f->frametype == AST_FRAME_VOICE || f->frametype == AST_FRAME_NULL || f->frametype == AST_FRAME_CNG) {
+		if (f->frametype == AST_FRAME_DTMF_BEGIN || f->frametype == AST_FRAME_DTMF_END){
+			ast_verb(3, "CPA: Channel [%s] has incoming DTMF, Digit received: [%d]\n", ast_channel_name(chan), f->subclass.integer);
+			strcpy(cpaStatus , "FoundDTMF");
+			res = 1;	
+			break;
+		}
+
+		//if (f->frametype == AST_FRAME_VOICE || f->frametype == AST_FRAME_NULL || f->frametype == AST_FRAME_CNG) {
+		if (f->frametype == AST_FRAME_VOICE) {
 			/* If the total time exceeds the analysis time then give up as we are not too sure */
 			if (f->frametype == AST_FRAME_VOICE) {
 				framelength = (ast_codec_samples_count(f) / DEFAULT_SAMPLES_PER_MS);
@@ -235,9 +264,11 @@ static void callProgress(struct ast_channel *chan, const char *data)
 
 			iTotalTime += framelength;
 			if (iTotalTime >= totalAnalysisTime) {
-				ast_verb(3, "CPA: Channel [%s]. Too long...\n", ast_channel_name(chan));
+				ast_verb(3, "CPA: Channel [%s]. Detection Timeout...\n", ast_channel_name(chan));
 				ast_frfree(f);
-				strcpy(cpaStatus , "Unknown");
+				if(cpaStatus == "") {
+					strcpy(cpaStatus , "Timeout");
+				}
 				break;
 			}
 
@@ -245,7 +276,7 @@ static void callProgress(struct ast_channel *chan, const char *data)
 			if (ast_dsp_call_progress(cpadsp, f) > 0){
 				ast_debug(1, "CPA: Wait what? Frame Control came back as NOT SILENCE on channel [%s]\n", ast_channel_name(chan));
 			}
-
+			
 			ast_debug(1, "CPA pulling tonestate.\n");
 			toneState = ast_dsp_get_tstate(cpadsp);
 			ast_debug(1, "CPA Frame - Frametype: [%d] Subclass: [%d] DSP ToneState: [%d]\n", f->frametype, f->subclass.integer, toneState);
@@ -317,14 +348,14 @@ static void callProgress(struct ast_channel *chan, const char *data)
 	ast_debug(1, "Frame Read For: [%dms], CPA returned: [%s]\n", dspnoise, cpaStatus);
 	
 	if (!res) {
-		/* It took too long to get a frame back. Giving up. */
-		ast_verb(3, "CPA: Channel [%s]. Too long...\n", ast_channel_name(chan));
-		strcpy(cpaStatus , "NOTSURE");
+		/* There was no frame to analyze, something's wrong with the channel!. */
+		ast_verb(3, "CPA: No Frames Collected for Channel [%s], something is wrong with this channel.\n", ast_channel_name(chan));
+		strcpy(cpaStatus , "NoFrames");
 	}
 
 	/* Set the status and cause on the channel */
 	pbx_builtin_setvar_helper(chan , "CPASTATUS" , cpaStatus);
-	ast_verb(3, "CPA: Channel [%s] - Frame Length: [%d] - iTotalTime: [%d]\n", ast_channel_name(chan), framelength, iTotalTime);
+	ast_verb(3, "CPA: Channel [%s] - Frame Length: [%d] - iTotalTime: [%d] - res: [%d]\n", ast_channel_name(chan), framelength, iTotalTime, res);
 
 	/* Restore channel read format */
 	if (readFormat && ast_set_read_format(chan, readFormat))

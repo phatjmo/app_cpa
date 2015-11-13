@@ -35,6 +35,9 @@
 					<value name="Hungup" />
 					<value name="Congestion" />
 					<value name="Talking" />
+					<value name="Unknown" />
+					<value name="NoFrames" />
+					<value name="FoundDTMF" />
 				</variable>
 			</variablelist>
 		</description>
