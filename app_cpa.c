@@ -202,14 +202,14 @@ static void callProgress(struct ast_channel *chan, const char *data)
 	readFormat = ao2_bump(ast_channel_readformat(chan));
 	if (ast_set_read_format(chan, ast_format_slin) < 0 ) {
 		ast_log(LOG_WARNING, "CPA: Channel [%s]. Unable to set to linear mode, giving up\n", ast_channel_name(chan));
-		pbx_builtin_setvar_helper(chan , "CPASTATUS", "");
+		pbx_builtin_setvar_helper(chan , "CPASTATUS", "NOTSLIN");
 		return;
 	}
 
 	/* Create a new DSP for call progress */
 	if (!(cpadsp = ast_dsp_new())) {
 		ast_log(LOG_WARNING, "CPA: Channel [%s]. Unable to create DSP :(\n", ast_channel_name(chan));
-		pbx_builtin_setvar_helper(chan , "CPASTATUS", "");
+		pbx_builtin_setvar_helper(chan , "CPASTATUS", "NODETECTOR");
 		return;
 	}
 	//ast_dsp_set_call_progress_zone(cpadsp, progzone);
